@@ -1,25 +1,139 @@
----
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
----
+# Preparing the workspace
+* Preparations: clear the workspace en set the working directory 
+* make sure that the rounding of integers in the way desired: broman packages gives access to the function 'myround'
+* make sure that lattice is loaded so xyplot can be used for multipanel-presenatation of data  
+```{r prepare the workspace, read and preprocess the data}
+rm(list=ls())
+setwd("~/___Big Data/Coursera/05 Reproducible Research/RepData_PeerAssessment1")
+library(broman)
+library(lattice)
+```
+# Loading and Preprocessing the data
+* read the data into a dataframe called "dataset"  
+* make sure the date in the dataset is really a Date-object
+* give an overview of the dataset to check type and format: str and head  
+
+```{r loading and preprocessing the data}
+dataset <- read.csv("activity.csv", stringsAsFactors=FALSE, header = T, sep = ",")
+dataset$date = as.Date(dataset$date, "%Y-%m-%d")
+str(dataset)
+head(dataset)
+```
+#What is mean total number of steps taken per day?
+* sum steps per day (all the intervals on the same date) - use aggregate for that
+* give insight in the df that was created with head and str
+* make a histogram of the totals
+* then calculate the mean per day
+
+```{r number of steps per day}
+stepsPerDay = aggregate(dataset$steps, by = list(dataset$date), FUN=sum, na.rm=TRUE)
+names(stepsPerDay) <- c("date", "total")
+str(stepsPerDay)
+head(stepsPerDay)
+hist(stepsPerDay$total,
+     breaks=seq(from=0, to=25000, by=1250), 
+     col="blue", 
+     xlab="Total number of steps", 
+     ylab="Frequency", 
+     main="61 days:frequency of numbers of steps")
+meanSteps = mean(stepsPerDay$total)
+medianSteps = median(stepsPerDay$total)
+```
+
+The mean number of steps per day is `r myround(meanSteps,2)`.   
+The median number of steps per days is `r myround(medianSteps,2)`.  
+
+#What is the average daily activity pattern?
+* sum steps by interval - use aggregate again, give the variables the names 'interval' and 'steps', and give the first six lines
+* make a plot of the activity per interval over the entire time period
+* then calculate max number of steps and the interval that goes with it.
+
+```{r daily pattern}
+stepsPerInterval = aggregate(dataset$steps, by = list(dataset$interval), FUN=mean, na.rm=TRUE)
+names(stepsPerInterval) <- c("interval", "steps")
+head(stepsPerInterval)
+plot(stepsPerInterval$interval,stepsPerInterval$steps,type = "l", col="black",  xlab="Intervals", ylab="Number of steps", main="Number of steps per interval")
+maxSteps = round(max(stepsPerInterval$steps),0)
+mostActiveInterval <- stepsPerInterval[stepsPerInterval$steps==max(stepsPerInterval$steps),1]
+```
+
+Averagely this subject is most active around interval number `r mostActiveInterval`. He or she takes on average `r maxSteps` steps during that interval.
+
+#Imputing missing values  
+##how many missing values are there?
+* Find out the missing values by applying is.na to the steps-field in the dataframe 
+* if there is a missing value it will return TRUE -- which counts as 1  
+* if not it will return FALSE -- which counts as 0
+* add them up and you will have the total of the missing values  
+```{r how many NA}
+NA_count <- sum(is.na(dataset$steps))
+```
+There are `r NA_count` missing values in the steps-field of the dataset.
+
+##replace them by the mean of the interval of the missing value 
+* an NA in interval 5 on particular day will be replaced by the mean of interval 5 in general 
+* therefore:  
+* find the positions that have an NA in steps: posNA  
+* create a new dataset to preserve the original set: nwdataset  
+* and replace the NA's on posNA with mean values from the stepPerInterval-df  
+* give an overview of nwdataset with str and head  
+```{r replace NA with mean value of that interval}
+posNA <- which(is.na(dataset$steps))
+nwdataset <- dataset
+for (i in 1:length(posNA)){
+        nwdataset[posNA[i],1] <- stepsPerInterval[stepsPerInterval$interval ==                   dataset[posNA[i],3],2]
+}
+str(nwdataset)
+head(nwdataset)
+```
+
+##make a histogram of the total number of steps in nwdataset
+* make a histogram with the new values  
+* calculate and report the mean and median total number of steps taken per day
+* make sure the difference between the first and second calculation is obvious
+* interpret the difference
+
+```{r histogram with NA replaced by mean of that interval}
+nwStepsPerDay = aggregate(nwdataset$steps, by = list(nwdataset$date), FUN=sum)
+names(nwStepsPerDay) <- c("date", "total")
+hist(nwStepsPerDay$total, breaks=seq(from=0, to=25000, by=1250), col="black",     xlab="Total number of steps", ylab="Frequency", main="Number of steps per day")
+nwMeanSteps = mean(nwStepsPerDay$total)
+nwMedianSteps = median(nwStepsPerDay$total)
+```
+
+The mean number of steps per day was `r myround(meanSteps,2)` but with the NA's replaced by the mean it is `r myround(nwMeanSteps,2)`.  
+The median number of steps per day was `r myround(medianSteps,2)` but with the NA's replaced by the mean it is `r myround(nwMedianSteps,2)`.
+Imputing of NAs has the following effect: Both the mean and the median number of steps have increased. There are considerable less days with 0 steps (2 versus 10) and considerable more days with 10000 tot 11250 steps.  
+
+#Are there differences in activity patterns between weekdays and weekends?  
+
+##figure out which dates are weekend and which are workdays
+* set the time to English (or the weekdays will be named in Dutch)
+* create a new variable: weekday (by applying the function weekdays to the Date object) 
+* and bind that variable to the dataset
+* create a new variable: daytype by determining whether the day is a weekendday or not (ifelse)
+* and bind that variable to the dataset as well
+* give an overview of the amended dataset: str en head
+
+```{r workdays vs weekends}
+Sys.setlocale("LC_TIME", "English")
+nwdataset <-cbind(nwdataset,day = weekdays(nwdataset$date, abbreviate = FALSE))
+nwdataset <- cbind(nwdataset, daytype = ifelse(nwdataset$day == "Saturday" | nwdataset$day == "Sunday", "weekend", "weekday"))
+str(nwdataset)
+head(nwdataset)
+stepsByDay <- aggregate(steps ~ interval + daytype, data = nwdataset, mean)
+names(stepsByDay) <- c("interval", "daytype", "steps")
+str(stepsByDay)
+head(stepsByDay)
+```
+  
+##draw a plot using lattice  
+```{r}
+xyplot(steps ~ interval | daytype, stepsByDay, type = "l", layout = c(1, 2), 
+    xlab = "Interval", ylab = "Number of steps")
+```
+  
+On weekdays there is one peak. During weekdays there is not so much of a peak but a higher activity overall.
 
 
-## Loading and preprocessing the data
 
-
-
-## What is mean total number of steps taken per day?
-
-
-
-## What is the average daily activity pattern?
-
-
-
-## Imputing missing values
-
-
-
-## Are there differences in activity patterns between weekdays and weekends?
